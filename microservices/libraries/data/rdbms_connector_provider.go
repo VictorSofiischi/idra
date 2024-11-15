@@ -1,9 +1,10 @@
 package data
 
 import (
-	"github.com/antrad1978/cdc_shared"
 	"microservices/libraries/custom_errors"
 	"microservices/libraries/etcd"
+
+	"github.com/antrad1978/cdc_shared"
 )
 
 func SyncByLastDestinationTimestamp(connectorSource cdc_shared.Connector, connectorDestination cdc_shared.Connector, providerDestination cdc_shared.DatabaseConnectorProvider, providerSource cdc_shared.DatabaseConnectorProvider) {
@@ -11,6 +12,7 @@ func SyncByLastDestinationTimestamp(connectorSource cdc_shared.Connector, connec
 	if err != nil {
 		custom_errors.CdcLog(connectorDestination, err)
 	}
+	
 	rows, _ := providerSource.GetRecordsByTimestamp(connectorSource, max)
 	providerDestination.InsertRows(connectorDestination, rows)
 }

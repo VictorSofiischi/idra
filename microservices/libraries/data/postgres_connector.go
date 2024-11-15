@@ -2,16 +2,17 @@ package data
 
 import (
 	"fmt"
-	"github.com/antrad1978/cdc_shared"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 	"log"
 	"microservices/libraries/custom_errors"
 	"microservices/libraries/models"
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/antrad1978/cdc_shared"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type PostgresGormManager struct {
@@ -55,7 +56,9 @@ func (rdb PostgresGormManager) GetMaxTableId(connector cdc_shared.Connector) int
 
 func (rdb PostgresGormManager) GetMaxTimestamp(connector cdc_shared.Connector) (time.Time, error) {
 	db, err := GetDatabase(connector.ConnectionString)
-	custom_errors.CdcLog(connector, err)
+	if err != nil {
+		custom_errors.CdcLog(connector, err)
+	}
 	query := "SELECT MAX(\"" + connector.TimestampField + "\") FROM " + connector.Table
 	return RetrieveMaxTimestamp(db, query)
 }
@@ -95,12 +98,16 @@ func (rdb PostgresGormManager) GetRecordsByTimestamp(connector cdc_shared.Connec
 		} else {
 			lastTimestampValue = lastTimestamp.Format(connector.TimestampFieldFormat)
 		}
-		tx := db.Debug().Table(connector.Table).Where(" \"" + connector.TimestampField + "\">'" + lastTimestampValue + "'").Order("\"" + connector.TimestampField + "\"" + " ASC").Limit(connector.MaxRecordBatchSize).Find(&results)
-		fmt.Println(tx.Error)
-	} else {
-		lastTimestampFormatted := fmt.Sprintf("%v", lastTimestamp.Format("2006-01-02 15:04:05.99999"))
-		query := connector.Query + " WHERE `" + connector.TimestampField + "` > '" + lastTimestampFormatted + "' ORDER BY " + connector.TimestampField + AscLimit + strconv.FormatInt(models.MaxBatchSizeDefault, 10)
+		query := "SELECT * FROM " + connector.Table + " WHERE " + connector.TimestampField + " > '" + lastTimestampValue + "' ORDER BY " + connector.TimestampField + AscLimit + strconv.FormatInt(models.MaxBatchSizeDefault, 10);
+		fmt.Print(query);
+		
 		rows, err := db.Raw(query).Rows()
+		custom_errors.CdcLog(connector, err)
+		defer rows.Close()
+		results = GetQueryRows(rows, db, results)
+	} else {
+		query := connector.Query + " WHERE " + connector.TimestampField + " > ? ORDER BY " + connector.TimestampField + " ASC LIMIT ?"
+		rows, err := db.Raw(query, lastTimestamp, models.MaxBatchSizeDefault).Rows()
 		custom_errors.CdcLog(connector, err)
 		defer rows.Close()
 		results = GetQueryRows(rows, db, results)

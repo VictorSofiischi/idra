@@ -2,14 +2,15 @@ package data
 
 import (
 	"fmt"
-	"github.com/antrad1978/cdc_shared"
-	"gorm.io/driver/sqlserver"
-	"gorm.io/gorm"
 	"microservices/libraries/custom_errors"
 	"microservices/libraries/models"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/antrad1978/cdc_shared"
+	"gorm.io/driver/sqlserver"
+	"gorm.io/gorm"
 )
 
 type MssqlManager struct {
@@ -36,7 +37,7 @@ func (MssqlManager) Modes() []string {
 }
 
 func (rdb MssqlManager) MoveData(sourceConnector cdc_shared.Connector, destinationConnector cdc_shared.Connector, mode string) {
-
+	
 }
 
 func GetMssqlDatabase(dsn string) (*gorm.DB, error) {

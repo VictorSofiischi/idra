@@ -3,16 +3,18 @@ package data
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/antrad1978/cdc_shared"
-	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"microservices/libraries/custom_errors"
 	"microservices/libraries/models"
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/antrad1978/cdc_shared"
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
 type KafkaConnector struct {
@@ -34,6 +36,7 @@ func (reader KafkaConnector) MoveData(sourceConnector cdc_shared.Connector, dest
 
 func (writer KafkaConnector) InsertRows(connector cdc_shared.Connector, records []map[string]interface{}) int {
 	config := getConfigMap(connector)
+	fmt.Print(records);
 	p, err := kafka.NewProducer(config)
 	if err != nil {
 		fmt.Printf("Failed to create producer: %s\n", err)
@@ -60,9 +63,11 @@ func (writer KafkaConnector) InsertRows(connector cdc_shared.Connector, records 
 	// Wait for all messages to be delivered
 	p.Flush(5 * 1000)
 
-	fmt.Printf("%d messages were produced to topic %s!", i, connector.Table)
+	fmt.Printf("%d messages were produced to topic %s!\n", i, connector.Table)
 
 	p.Close()
+	fmt.Print("Producer closed!\n")
+
 	return len(records)
 }
 
@@ -100,22 +105,29 @@ func (reader KafkaConnector) GetRecords(connector cdc_shared.Connector, destinat
 
 	c.Seek(tp, 1000)
 
-	// Process messages
-	totalCount := 0
-	run := true
-	for run == true {
-		select {
-		case sig := <-sigchan:
-			fmt.Printf("Caught signal %v: terminating\n", sig)
-			run = false
-		default:
+	var wg sync.WaitGroup
+	wg.Add(1)
 
-			msg, err := c.ReadMessage(100 * time.Millisecond)
-			if err != nil {
-				fmt.Println(string(err.Error()))
-				// Errors are informational and automatically handled by the consumer
-				continue
-			}
+	// Process messages
+	go func() {
+		defer wg.Done();
+		totalCount := 0
+		run := true
+		errCount := 0;
+		for run == true {
+			select {
+			case sig := <-sigchan:
+				fmt.Printf("Caught signal %v: terminating\n", sig)
+				run = false
+			default:
+				msg, err := c.ReadMessage(1000 * time.Millisecond)
+				if err != nil {
+					errCount++;
+					if errCount < 10 {
+						fmt.Println(string(err.Error()));
+					}
+					continue
+				}
 			recordKey := string(msg.Key)
 			partition := msg.TopicPartition.Partition
 			offset := int64(msg.TopicPartition.Offset)
@@ -139,11 +151,16 @@ func (reader KafkaConnector) GetRecords(connector cdc_shared.Connector, destinat
 
 	fmt.Printf("Closing consumer\n")
 	c.Close()
+	}()
 }
 
 func (reader KafkaConnector) getConsumer(connector cdc_shared.Connector) (*kafka.Consumer, error) {
-	config := getConfigMap(connector)
-	c, err := kafka.NewConsumer(config)
+	getConfigMap(connector)
+	c, err := kafka.NewConsumer(&kafka.ConfigMap{
+		"bootstrap.servers": "localhost:9092",
+		"group.id":          "test",
+		"auto.offset.reset": "earliest",
+	})
 	if err != nil {
 		fmt.Printf("Failed to create consumer: %s", err)
 		os.Exit(1)

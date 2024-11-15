@@ -1,0 +1,36 @@
+[
+  {
+    "id": "164b9164-cc05-49b1-7845-219348bbc164",
+    "sync_name": "sample_postgres",
+    "source_connector": {
+      "id": "id",
+      "connector_name": "sample",
+      "connector_source_type": "PostgresGORM",
+      "connection_string": "host=localhost user=postgres password=1234 dbname=postgres port=5432 sslmode=disable TimeZone=UTC",
+      "query": "select * from destination_table",
+      "table": "destination_table",
+      "polling_time": 0,
+      "timestamp_field": "created_at",
+      "timestamp_field_format": "",
+      "max_record_batch_size": 0,
+      "save_mode": "Upsert",
+      "attributes": null
+    },
+    "destination_connector": {
+      "id": "id",
+      "connector_name": "sample",
+      "connector_source_type": "MysqlGORM",
+      "connection_string": "root:Igalardo2002\u0021@tcp(localhost:3306)/database2?charset=utf8mb4\u0026parseTime=True\u0026loc=Local",
+      "query": "",
+      "table": "some",
+      "polling_time": 0,
+      "timestamp_field": "created_at",
+      "timestamp_field_format": "",
+      "max_record_batch_size": 0,
+      "save_mode": "",
+      "attributes": null
+    },
+    "mode": "LastDestinationTimestamp",
+    "disabled": false
+  }
+]

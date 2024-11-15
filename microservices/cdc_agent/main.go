@@ -2,18 +2,19 @@ package main
 
 import (
 	"fmt"
-	"github.com/joho/godotenv"
 	"microservices/cdc_agent/processing"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
-	err := godotenv.Load("/Users/antonioradesca/Code/idra/microservices/cdc_agent/.env")
+	err := godotenv.Load("./.env")
 	if err != nil {
 		fmt.Println("Error loading .env file")
 	}
 	//if custom_errors.IsStaticRunMode() {
-	//	processing.ProcessStatic()
+		processing.ProcessStatic()
 	//} else {
-	processing.StartWorkerNode()
+	// processing.StartWorkerNode()
 	//}
 }
