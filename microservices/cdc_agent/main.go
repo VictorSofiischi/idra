@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"microservices/cdc_agent/processing"
 
+	"microservices/libraries/custom_errors"
+
 	"github.com/joho/godotenv"
 )
 
@@ -12,9 +14,9 @@ func main() {
 	if err != nil {
 		fmt.Println("Error loading .env file")
 	}
-	//if custom_errors.IsStaticRunMode() {
+	if custom_errors.IsStaticRunMode() {
 		processing.ProcessStatic()
-	//} else {
-	// processing.StartWorkerNode()
-	//}
+	} else {
+		processing.StartWorkerNode()
+	}
 }
