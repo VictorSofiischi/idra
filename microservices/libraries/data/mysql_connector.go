@@ -29,7 +29,7 @@ func (MysqlConnector) Modes() []string {
 	return []string{models.Id, models.Timestamp, models.LastDestinationId, models.LastDestinationTimestamp, models.FullWithId}
 }
 
-func (rdb MysqlConnector) MoveData(sourceConnector cdc_shared.Connector, destinationConnector cdc_shared.Connector, mode string){
+func (rdb MysqlConnector) MoveData(sync cdc_shared.Sync) {
 
 }
 

@@ -3,15 +3,16 @@ package data
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/antrad1978/cdc_shared"
-	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/amqp"
-	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/stream"
 	"microservices/libraries"
 	"microservices/libraries/custom_errors"
 	"os"
 	"os/signal"
 	"strconv"
 	"syscall"
+
+	"github.com/antrad1978/cdc_shared"
+	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/amqp"
+	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/stream"
 )
 
 type RabbiMQStreamConnector struct{}
