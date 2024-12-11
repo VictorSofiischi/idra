@@ -1,6 +1,7 @@
 package data
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"microservices/libraries/custom_errors"
@@ -27,7 +28,7 @@ func (PostgresGormManager) Modes() []string {
 	return []string{models.Id, models.Timestamp, models.LastDestinationId, models.LastDestinationTimestamp, models.FullWithId}
 }
 
-func (rdb PostgresGormManager) MoveData(sync cdc_shared.Sync) {
+func (rdb PostgresGormManager) MoveData(sync cdc_shared.Sync, ctx context.Context) {
 
 }
 
@@ -48,6 +49,8 @@ func GetDatabase(dsn string) (*gorm.DB, error) {
 
 func (rdb PostgresGormManager) GetMaxTableId(connector cdc_shared.Connector) int64 {
 	db, err := GetDatabase(connector.ConnectionString)
+	sqlDB := getDB(db)
+	defer sqlDB.Close()
 	custom_errors.CdcLog(connector, err)
 	query := "SELECT MAX(\"" + connector.IdField + "\") FROM \"" + connector.Table + "\""
 	offset := RetrieveMaxId(db, query)
@@ -56,19 +59,24 @@ func (rdb PostgresGormManager) GetMaxTableId(connector cdc_shared.Connector) int
 
 func (rdb PostgresGormManager) GetMaxTimestamp(connector cdc_shared.Connector) (time.Time, error) {
 	db, err := GetDatabase(connector.ConnectionString)
-	if err != nil {
-		custom_errors.CdcLog(connector, err)
-	}
+	sqlDB := getDB(db)
+	defer sqlDB.Close()
+	custom_errors.CdcLog(connector, err)
 	query := "SELECT MAX(\"" + connector.TimestampField + "\") FROM " + connector.Table
 	return RetrieveMaxTimestamp(db, query)
 }
 
 func (rdb PostgresGormManager) GetRowsById(connector cdc_shared.Connector, lastId int64) ([]map[string]interface{}, int64) {
 	db, err := GetDatabase(connector.ConnectionString)
+	sqlDB := getDB(db)
+	defer sqlDB.Close()
 	custom_errors.CdcLog(connector, err)
 	var results []map[string]interface{}
 	if connector.Query == "" {
-		db.Table(connector.Table).Where(" \""+connector.IdField+"\">"+strconv.FormatInt(lastId, 10), nil).Order("\"" + connector.IdField + "\"" + " ASC").Limit(models.MaxBatchSizeDefault).Find(&results)
+		tx := db.Debug().Table(connector.Table).Where(connector.IdField+">?", strconv.FormatInt(lastId, 10)).Order(connector.IdField + " ASC").Limit(models.MaxBatchSizeDefault).Find(&results)
+		if tx.Error != nil {
+			custom_errors.CdcLog(connector, err)
+		}
 	} else {
 		rows, err := db.Raw(connector.Query + " WHERE " + connector.IdField + " > " + strconv.FormatInt(lastId, 10)).Rows()
 		custom_errors.CdcLog(connector, err)
@@ -85,6 +93,8 @@ func (rdb PostgresGormManager) GetRowsById(connector cdc_shared.Connector, lastI
 
 func (rdb PostgresGormManager) GetRecordsByTimestamp(connector cdc_shared.Connector, lastTimestamp time.Time) ([]map[string]interface{}, time.Time) {
 	db, err := GetDatabase(connector.ConnectionString)
+	sqlDB := getDB(db)
+	defer sqlDB.Close()
 	var res time.Time
 	if err != nil {
 		custom_errors.CdcLog(connector, err)
@@ -122,6 +132,8 @@ func (rdb PostgresGormManager) GetRecordsByTimestamp(connector cdc_shared.Connec
 
 func (rdb PostgresGormManager) InsertRows(connector cdc_shared.Connector, rows []map[string]interface{}) int {
 	db, err := GetDatabase(connector.ConnectionString)
+	sqlDB := getDB(db)
+	defer sqlDB.Close()
 	custom_errors.CdcLog(connector, err)
 	return SaveData(connector, rows, db)
 }

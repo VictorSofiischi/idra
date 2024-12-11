@@ -1,6 +1,7 @@
 package data
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/antrad1978/cdc_shared"
@@ -24,12 +25,12 @@ func (s3JsonConnector S3JsonConnector) InsertRows(connector cdc_shared.Connector
 	return -1
 }
 
-func (s3JsonConnector S3JsonConnector) MoveData(sync cdc_shared.Sync) {
+func (s3JsonConnector S3JsonConnector) MoveData(sync cdc_shared.Sync, ctx context.Context) {
 	return
 }
 
 func (s3JsonConnector S3JsonConnector) Name() string {
-	return "S3"
+	return "s3JsonConnector"
 }
 
 func (S3JsonConnector) Modes() []string {

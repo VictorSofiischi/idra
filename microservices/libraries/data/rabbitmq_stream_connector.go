@@ -1,6 +1,7 @@
 package data
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"microservices/libraries"
@@ -15,50 +16,52 @@ import (
 	"github.com/rabbitmq/rabbitmq-stream-go-client/pkg/stream"
 )
 
-type RabbiMQStreamConnector struct{}
+type RabbitMQStreamConnector struct{}
 
-func (RabbiMQStreamConnector) Name() string {
-	return "RabbiMQStreamConnector"
+func (RabbitMQStreamConnector) Name() string {
+	return "RabbitMQStreamConnector"
 }
 
-func (RabbiMQStreamConnector) Modes() []string {
+func (RabbitMQStreamConnector) Modes() []string {
 	return []string{"Last", "First", "Next"}
 }
 
-func (RabbiMQStreamConnector) GetRecords(connector cdc_shared.Connector, destinationProvider cdc_shared.ConnectorProvider, destinationConnector cdc_shared.Connector, mode string) {
-	env, err := getEnv(connector)
+func (RabbitMQStreamConnector) GetRecords(sync cdc_shared.Sync, ctx context.Context) {
+	fmt.Println("Started RabbitMQStreamConnector for sync: " + sync.SyncName)
+
+	// Pass the context down to all components that need to listen for cancellation.
+	env, err := getEnv(sync.SourceConnector)
 	if err != nil {
-		custom_errors.CdcLog(connector, err)
+		custom_errors.CdcLog(sync.SourceConnector, err)
 		return
 	}
+
+	var dataBatch []map[string]interface{}
+	batchSize := 1
+	value, exists := sync.SourceConnector.Attributes["batch"]
+	if exists {
+		batchSize, _ = strconv.Atoi(value)
+	}
+
 	messagesHandler := func(consumerContext stream.ConsumerContext, message *amqp.Message) {
-		fmt.Printf("Stream: %s - Received message: %s\n", consumerContext.Consumer.GetStreamName(), message.Data)
-	}
-
-	var offset stream.OffsetSpecification
-
-	switch mode {
-	case "Next":
-		offset = stream.OffsetSpecification{}.Next()
-	case "First":
-		offset = stream.OffsetSpecification{}.First()
-	case "Offset":
-		offsetManager := libraries.IntOffset{}
-		value := offsetManager.GetOffsetId("")
-		res, err := strconv.ParseInt(string(value), 10, 64)
-		if err != nil {
-			res = 0
+		// Use the context here to respect cancellation requests
+		select {
+		case <-ctx.Done(): // Listen for the context cancellation
+			fmt.Println("Context cancelled, stopping message processing.")
+			return
+		default:
+			processMessages(consumerContext, message, dataBatch, batchSize, sync)
 		}
-		offset = stream.OffsetSpecification{}.Offset(res)
-	default:
-		offset = stream.OffsetSpecification{}.Last()
 	}
 
-	consumer, err := env.NewConsumer(connector.Table, messagesHandler,
+	offset := setOffsetStrategy(sync)
+
+	consumer, err := env.NewConsumer(sync.SourceConnector.Table, messagesHandler,
 		stream.NewConsumerOptions().SetOffset(offset))
 
 	sigChannel := make(chan os.Signal, 1)
 	signal.Notify(sigChannel, syscall.SIGINT, syscall.SIGTERM)
+
 	run := true
 	for run == true {
 		select {
@@ -69,24 +72,72 @@ func (RabbiMQStreamConnector) GetRecords(connector cdc_shared.Connector, destina
 				panic(err)
 			}
 			run = false
-		default:
-			fmt.Print("Process " + connector.ConnectorName)
+		case <-ctx.Done(): // Listen for cancellation from the context
+			fmt.Println("Context cancelled, shutting down.")
+			err = consumer.Close()
+			if err != nil {
+				panic(err)
+			}
+			run = false
 		}
 	}
-
 }
 
-func (reader RabbiMQStreamConnector) MoveData(sourceConnector cdc_shared.Connector, destinationConnector cdc_shared.Connector, mode string) {
-	destinationProvider := RetrieveProvider(destinationConnector.ConnectorType)
-	reader.GetRecords(sourceConnector, destinationProvider, destinationConnector, mode)
+func setOffsetStrategy(sync cdc_shared.Sync) stream.OffsetSpecification {
+	var offset stream.OffsetSpecification
+	switch sync.Mode {
+	case "Next":
+		offset = stream.OffsetSpecification{}.Next()
+	case "First":
+		offset = stream.OffsetSpecification{}.First()
+	case "Offset":
+		offsetManager := libraries.IntOffset{}
+		value := offsetManager.GetOffsetId(sync.Mode)
+		res, err := strconv.ParseInt(string(value), 10, 64)
+		if err != nil {
+			res = 0
+		}
+		offset = stream.OffsetSpecification{}.Offset(res)
+	default:
+		offset = stream.OffsetSpecification{}.Last()
+	}
+	return offset
 }
 
-func (RabbiMQStreamConnector) InsertRows(connector cdc_shared.Connector, rows []map[string]interface{}) int {
+func processMessages(consumerContext stream.ConsumerContext, message *amqp.Message, dataBatch []map[string]interface{}, batchSize int, sync cdc_shared.Sync) {
+	var dataValue map[string]interface{}
+
+	if err := json.Unmarshal(message.Data[0], &dataValue); err != nil {
+		custom_errors.CdcLog(sync.SourceConnector, err)
+		return
+	}
+	dataBatch = append(dataBatch, dataValue)
+	if len(dataBatch) >= batchSize {
+		fmt.Printf("Stream: %s - Received message: %s\n", consumerContext.Consumer.GetStreamName(), message.Data)
+		provider := RetrieveProvider(sync.DestinationConnector.ConnectorType)
+
+		provider.InsertRows(sync.DestinationConnector, dataBatch)
+		dataBatch = dataBatch[:0]
+		if sync.Mode == "Offset" {
+			offset := consumerContext.Consumer.GetOffset()
+			libraries.IntOffset{}.SetOffsetId(sync.Id, offset)
+		}
+	}
+}
+
+// MoveData now accepts a context to propagate cancellation
+func (reader RabbitMQStreamConnector) MoveData(sync cdc_shared.Sync, ctx context.Context) {
+	fmt.Println("Started Sync RabbitMQ streaming connector " + sync.SyncName)
+	reader.GetRecords(sync, ctx)
+}
+
+func (RabbitMQStreamConnector) InsertRows(connector cdc_shared.Connector, rows []map[string]interface{}) int {
 	env, err := getEnv(connector)
 	if err != nil {
 		custom_errors.CdcLog(connector, err)
 		return -1
 	}
+	defer env.Close()
 	producer, err := env.NewProducer(connector.Table, stream.NewProducerOptions())
 	for _, row := range rows {
 		byteArray, err := json.Marshal(row)
@@ -96,18 +147,13 @@ func (RabbiMQStreamConnector) InsertRows(connector cdc_shared.Connector, rows []
 		}
 		err = producer.Send(amqp.NewMessage(byteArray))
 	}
-
-	err = producer.Close()
-	if err != nil {
-		panic(err)
-	}
 	return 1
 }
 
 func getEnv(connector cdc_shared.Connector) (*stream.Environment, error) {
 	port, err := strconv.Atoi(connector.Attributes["port"])
 	if err != nil {
-		port = 5672
+		port = 5552
 	}
 	env, err := stream.NewEnvironment(
 		stream.NewEnvironmentOptions().

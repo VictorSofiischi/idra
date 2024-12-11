@@ -2,6 +2,7 @@ package processing
 
 import (
 	"encoding/json"
+	"fmt"
 	"microservices/libraries/custom_errors"
 	"microservices/libraries/data"
 	"microservices/libraries/models"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/antrad1978/cdc_shared"
 )
-
 
 func ProcessStatic() {
 	var syncs []cdc_shared.Sync
@@ -23,7 +23,8 @@ func ProcessStatic() {
 	json.Unmarshal(dat, &syncs)
 	for {
 		for _, sync := range syncs {
-			data.SyncData(sync, sync.Mode)
+			fmt.Println(sync.SyncName)
+			data.SyncData(sync)
 		}
 		time.Sleep(1 * 3600 * time.Second)
 	}

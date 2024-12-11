@@ -5,8 +5,12 @@ go 1.21
 toolchain go1.23.1
 
 require (
+<<<<<<< HEAD
 	github.com/amikos-tech/chroma-go v0.1.4
 	github.com/antrad1978/cdc_shared v1.0.3
+=======
+	github.com/antrad1978/cdc_shared v1.0.4
+>>>>>>> upstream/main
 	github.com/aws/aws-sdk-go v1.44.199
 	github.com/codenotary/immudb v1.5.0
 	github.com/confluentinc/confluent-kafka-go/v2 v2.6.0
@@ -62,10 +66,21 @@ require (
 	github.com/pelletier/go-toml/v2 v2.0.6 // indirect
 	github.com/pierrec/lz4 v2.6.1+incompatible // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+<<<<<<< HEAD
 	github.com/prometheus/client_golang v1.17.0 // indirect
 	github.com/prometheus/client_model v0.5.0 // indirect
 	github.com/prometheus/common v0.44.0 // indirect
 	github.com/prometheus/procfs v0.12.0 // indirect
+=======
+	github.com/prometheus/client_golang v1.12.2 // indirect
+	github.com/prometheus/client_model v0.2.0 // indirect
+	github.com/prometheus/common v0.32.1 // indirect
+	github.com/prometheus/procfs v0.7.3 // indirect
+	github.com/pseudomuto/protoc-gen-doc v1.4.1 // indirect
+	github.com/pseudomuto/protokit v0.2.1 // indirect
+	github.com/rabbitmq/amqp091-go v1.10.0 // indirect
+	github.com/rabbitmq/rabbitmq-stream-go-client v1.4.10 // indirect
+>>>>>>> upstream/main
 	github.com/rogpeppe/go-internal v1.11.0 // indirect
 	github.com/rs/xid v1.5.0 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect

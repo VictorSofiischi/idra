@@ -1,11 +1,15 @@
 package tests
 
 import (
-	"github.com/antrad1978/cdc_shared"
+	data2 "microservices/libraries/data"
 	"testing"
+
+	"github.com/antrad1978/cdc_shared"
 )
 
 func TestInsertRowsKafka(t *testing.T) {
+	sync := cdc_shared.Sync{}
+	kafka := data2.KafkaConnector{}
 	//Producer
 	connector := cdc_shared.Connector{}
 	connector.ConnectorType = "KafkaConnector"
@@ -24,4 +28,10 @@ func TestInsertRowsKafka(t *testing.T) {
 	connector2.ConnectionString = "127.0.0.1:9092"
 	connector2.Table = "topic2"
 	connector2.IdField = "id"
+
+	sync.SourceConnector = connector
+	sync.DestinationConnector = connector2
+	sync.Mode = "Default"
+
+	kafka.MoveData(sync)
 }

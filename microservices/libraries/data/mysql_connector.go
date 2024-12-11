@@ -1,6 +1,7 @@
 package data
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"microservices/libraries/custom_errors"
@@ -29,7 +30,7 @@ func (MysqlConnector) Modes() []string {
 	return []string{models.Id, models.Timestamp, models.LastDestinationId, models.LastDestinationTimestamp, models.FullWithId}
 }
 
-func (rdb MysqlConnector) MoveData(sync cdc_shared.Sync) {
+func (rdb MysqlConnector) MoveData(sync cdc_shared.Sync, ctx context.Context) {
 
 }
 
@@ -62,6 +63,8 @@ func (rdb MysqlConnector) GetMaxTableId(connector cdc_shared.Connector) int64 {
 	db, err := GetMysqlDatabase(connector.ConnectionString)
 	custom_errors.CdcLog(connector, err)
 	query := "SELECT MAX(`" + connector.IdField + "`) FROM `" + connector.Table + "`"
+	sqlDB := getDB(db)
+	defer sqlDB.Close()
 	return RetrieveMaxId(db, query)
 }
 
@@ -69,6 +72,8 @@ func (rdb MysqlConnector) GetMaxTimestamp(connector cdc_shared.Connector) (time.
 	db, err := GetMysqlDatabase(connector.ConnectionString)
 	custom_errors.CdcLog(connector, err)
 	query := "SELECT MAX(`" + connector.TimestampField + "`) FROM `" + connector.Table + "`"
+	sqlDB := getDB(db)
+	defer sqlDB.Close()
 	return RetrieveMaxTimestamp(db, query)
 }
 
@@ -98,6 +103,8 @@ func (rdb MysqlConnector) GetRowsById(connector cdc_shared.Connector, lastId int
 	if lastId >= offset {
 		offset = lastId
 	}
+	sqlDB := getDB(db)
+	defer sqlDB.Close()
 	return results, offset
 }
 
@@ -107,13 +114,16 @@ func (rdb MysqlConnector) InsertRows(connector cdc_shared.Connector, rows []map[
 		custom_errors.CdcLog(connector, err)
 		return -1
 	}
-
+	sqlDB := getDB(db)
+	defer sqlDB.Close()
 	return SaveData(connector, rows, db)
 }
 
 func (rdb MysqlConnector) GetRecordsByTimestamp(connector cdc_shared.Connector, lastTimestamp time.Time) ([]map[string]interface{}, time.Time) {
 	db, err := GetMysqlDatabase(connector.ConnectionString)
 	custom_errors.CdcLog(connector, err)
+	sqlDB := getDB(db)
+	defer sqlDB.Close()
 	var results []map[string]interface{}
 	if connector.Query==""{
 		db.Table(connector.Table).Where(" \"" + connector.TimestampField +"\">"+ lastTimestamp.String(), nil).Order("\"" + connector.TimestampField +"\""+" ASC").Limit(connector.MaxRecordBatchSize).Find(&results)

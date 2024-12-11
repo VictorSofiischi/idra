@@ -13,26 +13,23 @@ import (
 	"microservices/libraries/data"
 	"microservices/libraries/etcd"
 	"microservices/libraries/models"
-	"os"
-	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
+var SyncExecutions = make(map[string]struct {
+	cancel context.CancelFunc
+	status string
+})
+
 func StartWorkerNode() {
 	var wg sync.WaitGroup
 	lm := libraries.LeaseManager{}
 	session := lm.GetLeasedSession()
 	wg.Add(1)
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	go func() {
-		for _ = range c {
-			wg.Done()
-		}
-	}()
+	defer wg.Done()
 
 	fmt.Println("Start processing")
 	agentData := models.GetCurrentAgentInfo()
@@ -40,20 +37,22 @@ func StartWorkerNode() {
 	custom_errors.LogAndDie(err)
 	keyPrefix := "agents/"
 
-	manager := Manager{}
-	manager.startWorker(RunSyncs)
-	if session == nil {
-		log.Printf("session nil'\n")
-	}
-	manager.ObserveDiedAgentEvent(session, keyPrefix)
-	manager.ListenGloballyBalanceEvent(session, keyPrefix)
-
 	key := keyPrefix + strconv.FormatInt(int64(lease.ID), 10)
 	data, _ := json.Marshal(agentData)
 	value := string(data)
 	_, err = session.Client().Put(context.Background(), key, value, clientv3.WithLease(lease.ID))
 
 	RenewLease(session, lease)
+
+	AllocateSyncs(session)
+
+	manager := Manager{}
+	manager.startWorker(RunSyncs)
+	if session == nil {
+		log.Printf("session nil'\n")
+	}
+	manager.ListenGloballyBalanceEvent(session, keyPrefix)
+
 	time.Sleep(2 * time.Second)
 	fmt.Println("Continue...")
 	wg.Wait()
@@ -62,19 +61,12 @@ func StartWorkerNode() {
 	fmt.Println("Terminating...")
 }
 
-func RunSyncs(stop chan bool) {
-	for {
-		select {
-		case <-stop:
-			fmt.Println("Force stop for rebalance event...")
-			time.Sleep(5 * time.Second)
-			ProcessSyncs()
-		default:
-			ProcessSyncs()
-		}
-	}
+func RunSyncs() {
+	go CheckExecutions()
+	ExecuteSyncs()
 }
 
+// RenewLease Renew periodically lease to show that agent is running correctly
 func RenewLease(session *concurrency.Session, lease *clientv3.LeaseGrantResponse) {
 	go func() {
 		for {
@@ -103,42 +95,19 @@ func CreateLoadBalancer(agents []models.CdcAgent) *etcd.LoadBalancer {
 	return lb
 }
 
-func ProcessSync(sync cdc_shared.Sync, wg *sync.WaitGroup) {
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Println("Error in ProcessSync goroutine:", r)
-			time.Sleep(30 * time.Second)
-		}
-	}()
-	defer wg.Done()
-	name := sync.Id
-	cli, _ := libraries.GetClient()
-	defer cli.Close()
-	// create a sessions to acquire a lock
-	s, err := concurrency.NewSession(cli)
-	custom_errors.LogAndDie(err)
-
-	defer s.Close()
-	mutex := concurrency.NewMutex(s, "/distributed-locks/"+name)
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	if err := mutex.Lock(ctx); err != nil {
-		fmt.Println("Lock failed")
-		return
+func ExecuteSync(sync cdc_shared.Sync) {
+	fmt.Println("Executing sync " + sync.SyncName)
+	ctx, cancel := data.SyncData(sync)
+	SyncExecutions[sync.Id] = struct {
+		cancel context.CancelFunc
+		status string
+	}{cancel, "running"}
+	if ctx == nil && cancel == nil {
+		time.Sleep(30 * time.Second)
 	}
-	fmt.Println("Acquired lock for ", name)
-	data.SyncData(sync, sync.Mode)
-	s.Orphan()
-	fmt.Println("Data processed for sync: ", name+" "+sync.SyncName)
-	if err := mutex.Unlock(context.Background()); err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("Released lock for ", name)
 }
 
-func ProcessSyncs() {
-	var wg sync.WaitGroup
+func ExecuteSyncs() {
 	var syncs []cdc_shared.Sync
 	id := libraries.GetMachineId()
 	syncsIds := libraries.GetKeys(models.AssignmentsPath + id)
@@ -154,13 +123,23 @@ func ProcessSyncs() {
 	}
 	if len(syncs) > 0 {
 		for _, sync := range syncs {
-			wg.Add(1)
-			go ProcessSync(sync, &wg)
+			if !sync.Disabled {
+				go ExecuteSync(sync)
+			}
 		}
-		wg.Wait()
 		time.Sleep(5 * time.Second)
 	}
-	/*else{
-		BalanceSyncs(session)
-	}*/
+}
+
+func CheckExecutions() {
+	for {
+		for key := range SyncExecutions {
+			if goroutine, exists := SyncExecutions[key]; exists {
+				fmt.Printf("Goroutine ID %s\n", key)
+				fmt.Printf("Goroutine status %s\n", goroutine.status)
+				fmt.Printf("startChan %s\n", goroutine.cancel)
+			}
+		}
+		time.Sleep(10 * time.Second)
+	}
 }

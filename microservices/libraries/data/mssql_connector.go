@@ -1,6 +1,8 @@
 package data
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"microservices/libraries/custom_errors"
 	"microservices/libraries/models"
@@ -36,7 +38,7 @@ func (MssqlManager) Modes() []string {
 	return []string{models.Id, models.Timestamp, models.LastDestinationId, models.LastDestinationTimestamp, models.FullWithId}
 }
 
-func (rdb MssqlManager) MoveData(sync cdc_shared.Sync) {
+func (rdb MssqlManager) MoveData(sync cdc_shared.Sync, ctx context.Context) {
 
 }
 
@@ -47,22 +49,31 @@ func GetMssqlDatabase(dsn string) (*gorm.DB, error) {
 }
 
 func (rdb MssqlManager) GetMaxTableId(connector cdc_shared.Connector) int64 {
-	db, err := GetMssqlDatabase(connector.ConnectionString)
-	custom_errors.CdcLog(connector, err)
+	db, sqlDB := getSQLServerDB(connector)
+	defer sqlDB.Close()
 	query := "SELECT MAX(\"" + connector.IdField + "\") FROM \"" + connector.Table + "\""
 	return RetrieveMaxId(db, query)
 }
 
 func (rdb MssqlManager) GetMaxTimestamp(connector cdc_shared.Connector) (time.Time, error) {
-	db, err := GetMssqlDatabase(connector.ConnectionString)
-	custom_errors.CdcLog(connector, err)
+	db, sqlDB := getSQLServerDB(connector)
+	defer sqlDB.Close()
 	query := "SELECT MAX(" + connector.TimestampField + ") FROM " + connector.Table
 	return RetrieveMaxTimestamp(db, query)
+}
+
+func getSQLServerDB(connector cdc_shared.Connector) (*gorm.DB, *sql.DB) {
+	db, err := GetMssqlDatabase(connector.ConnectionString)
+	sqlDB := getDB(db)
+	custom_errors.CdcLog(connector, err)
+	return db, sqlDB
 }
 
 func (rdb MssqlManager) GetRowsById(connector cdc_shared.Connector, lastId int64) ([]map[string]interface{}, int64) {
 	db, err := GetMssqlDatabase(connector.ConnectionString)
 	custom_errors.CdcLog(connector, err)
+	sqlDB := getDB(db)
+	defer sqlDB.Close()
 	var results []map[string]interface{}
 	if connector.Query == "" {
 		db.Table(connector.Table).Where(" \""+connector.IdField+"\">"+strconv.FormatInt(lastId, 10), nil).Order("\"" + connector.IdField + "\"" + " ASC").Limit(connector.MaxRecordBatchSize).Find(&results)
@@ -82,6 +93,8 @@ func (rdb MssqlManager) GetRowsById(connector cdc_shared.Connector, lastId int64
 func (rdb MssqlManager) InsertRows(connector cdc_shared.Connector, rows []map[string]interface{}) int {
 	db, err := GetMssqlDatabase(connector.ConnectionString)
 	custom_errors.CdcLog(connector, err)
+	sqlDB := getDB(db)
+	defer sqlDB.Close()
 	i := 0
 	for ; i < len(rows); i++ {
 		row := rows[i]

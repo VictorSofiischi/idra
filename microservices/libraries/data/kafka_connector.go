@@ -1,6 +1,7 @@
 package data
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"microservices/libraries/custom_errors"
@@ -29,7 +30,7 @@ func (KafkaConnector) Modes() []string {
 	return []string{models.Default}
 }
 
-func (connector KafkaConnector) MoveData(sync cdc_shared.Sync) {
+func (connector KafkaConnector) MoveData(sync cdc_shared.Sync, ctx context.Context) {
 	destinationProvider := RetrieveProvider(sync.DestinationConnector.ConnectorType)
 	connector.GetRecords(sync.SourceConnector, destinationProvider, sync.DestinationConnector)
 }
